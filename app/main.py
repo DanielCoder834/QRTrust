@@ -24,7 +24,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
-app = FastAPI(title="QR Safe API", description="API for QR code security verification")
+app = FastAPI(title="QR Trust API", description="API for QR code security verification")
 
 # CORS middleware setup
 app.add_middleware(
@@ -115,7 +115,7 @@ async def check_url_in_database(pool, normalized_url: str) -> Dict[str, Any]:
         if malicious_result:
             return {
                 "verified": False,
-                "source": "QR Safe Threat Database",
+                "source": "QR Trust Threat Database",
                 "details": "This URL has been reported as malicious.",
                 "is_malicious": True,
                 "threat_details": malicious_result[0]["threat_details"] or "Known scam or phishing URL"
@@ -135,7 +135,7 @@ async def check_url_in_database(pool, normalized_url: str) -> Dict[str, Any]:
             partner = verified_result[0]
             return {
                 "verified": True,
-                "source": "QR Safe Verified Database",
+                "source": "QR Trust Verified Database",
                 "details": f"Official {partner['company_name']} QR code. Verified partner.",
                 "company_name": partner["company_name"],
                 "verification_date": partner["verification_date"].isoformat()
@@ -144,7 +144,7 @@ async def check_url_in_database(pool, normalized_url: str) -> Dict[str, Any]:
         # If neither verified nor malicious
         return {
             "verified": False,
-            "source": "QR Safe Verified Database",
+            "source": "QR Trust Verified Database",
             "details": "This URL is not from a verified partner.",
             "unknown": True
         }

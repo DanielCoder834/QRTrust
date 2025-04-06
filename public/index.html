@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QR Safe - Secure QR Code Scanner</title>
+    <title>QR Trust - Make QR Codes Trustworthy</title>
+    <link rel="manifest" href="manifest.json">
     <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
     <style>
         :root {
@@ -159,7 +160,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>QR Safe Scanner</h1>
+            <h1>QR Trust</h1>
         </div>
         
         <div id="qr-reader"></div>
@@ -372,7 +373,7 @@
                     return {
                         db_check: {
                             verified: true,
-                            source: 'QR Safe Verified Database (Fallback)',
+                            source: 'QR Trust Verified Database (Fallback)',
                             details: 'Official Starbucks QR code. Verified partner.',
                             is_malicious: false
                         },
@@ -386,7 +387,7 @@
                     return {
                         db_check: {
                             verified: false,
-                            source: 'QR Safe Threat Database (Fallback)',
+                            source: 'QR Trust Threat Database (Fallback)',
                             details: 'This URL has been reported as malicious.',
                             is_malicious: true
                         },
@@ -400,7 +401,7 @@
                     return {
                         db_check: {
                             verified: false,
-                            source: 'QR Safe Verified Database (Fallback)',
+                            source: 'QR Trust Verified Database (Fallback)',
                             details: 'This URL is not from a verified partner.',
                             is_malicious: false
                         },

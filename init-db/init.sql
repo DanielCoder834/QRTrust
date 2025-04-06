@@ -1,5 +1,5 @@
 
--- Create tables for the QR Safe database
+-- Create tables for the QR Trust database
 CREATE TABLE verified_partners (
   id SERIAL PRIMARY KEY,
   company_name VARCHAR(255) NOT NULL,
