@@ -180,40 +180,119 @@
             }
         }
 
+        // Helper function to detect iOS devices
+        function isIOS() {
+            return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        }
+
         docReady(function() {
             const resultContainer = document.getElementById('qr-reader-results');
+            const qrReaderElement = document.getElementById('qr-reader');
             let lastResult, countResults = 0;
             
             // Get the restart scanner button
             const restartButton = document.getElementById('restart-scanner');
             
+            // Create a variable to hold our Html5Qrcode instance
+            let html5QrCode = null;
+            
+            // Flag to track if scanning is active
+            let isScanning = false;
+            
             // Success callback when QR code is scanned
             function onScanSuccess(decodedText, decodedResult) {
-                // Stop the scanner to prevent multiple scans
-                html5QrcodeScanner.pause();
-                
-                // Reset last result to allow rescanning later if needed
-                lastResult = null;
-                
-                // Process the scanned URL
-                processScannedUrl(decodedText);
+                if (isScanning) {
+                    // Pause scanning
+                    isScanning = false;
+                    html5QrCode.pause();
+                    
+                    // Reset last result to allow rescanning later if needed
+                    lastResult = null;
+                    
+                    // Process the scanned URL
+                    processScannedUrl(decodedText);
+                }
             }
             
-            // Create scanner with default settings
-            const html5QrcodeScanner = new Html5QrcodeScanner(
-                "qr-reader", 
-                { 
-                    fps: 10, 
-                    qrbox: { width: 250, height: 250 },
-                    rememberLastUsedCamera: true,
-                    showTorchButtonIfSupported: true,
-                    supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
-                },
-                /* verbose= */ false
-            );
+            // Error callback for QR scanning
+            function onScanError(errorMessage) {
+                // We can ignore errors as they happen frequently during normal scanning
+                console.debug("QR scan error: ", errorMessage);
+            }
             
-            // Render the scanner
-            html5QrcodeScanner.render(onScanSuccess);
+            // Initialize the scanner with the appropriate camera
+            async function initializeScanner() {
+                try {
+                    // Clean up existing QR reader element content
+                    qrReaderElement.innerHTML = '';
+                    
+                    // Create scan region container
+                    const scanRegion = document.createElement('div');
+                    scanRegion.style.position = 'relative';
+                    scanRegion.style.width = '100%';
+                    scanRegion.style.height = '300px'; // Adjust height as needed
+                    qrReaderElement.appendChild(scanRegion);
+                    
+                    // Initialize QR code reader
+                    html5QrCode = new Html5Qrcode("qr-reader");
+                    
+                    // Get cameras
+                    const devices = await Html5Qrcode.getCameras();
+                    
+                    if (devices && devices.length) {
+                        let selectedDeviceId = devices[0].id;
+                        
+                        // On iOS, specifically look for a back camera
+                        if (isIOS()) {
+                            const backCamera = devices.find(device => 
+                                device.label.toLowerCase().includes('back'));
+                            
+                            if (backCamera) {
+                                selectedDeviceId = backCamera.id;
+                                console.log("Selected back camera:", backCamera.label);
+                            } else {
+                                console.log("Back camera not found, using default:", devices[0].label);
+                            }
+                        }
+                        
+                        // Configure camera settings
+                        const config = {
+                            fps: 10,
+                            qrbox: { width: 250, height: 250 },
+                            aspectRatio: 1.0,
+                            showTorchButtonIfSupported: true
+                        };
+                        
+                        // Start scanning
+                        await html5QrCode.start(
+                            selectedDeviceId, 
+                            config,
+                            onScanSuccess,
+                            onScanError
+                        );
+                        
+                        isScanning = true;
+                        console.log("QR scanner started");
+                    } else {
+                        resultContainer.innerHTML = `
+                            <div class="result-item">
+                                <p style="color: var(--ios-red);">No camera devices found</p>
+                            </div>
+                        `;
+                        console.error("No camera devices found");
+                    }
+                } catch (err) {
+                    resultContainer.innerHTML = `
+                        <div class="result-item">
+                            <p style="color: var(--ios-red);">Error initializing camera: ${err.message}</p>
+                        </div>
+                    `;
+                    console.error("Error initializing scanner:", err);
+                }
+            }
+            
+            // Initialize scanner on page load
+            initializeScanner();
             
             // Add restart scanner button functionality
             if (restartButton) {
@@ -225,7 +304,18 @@
                     restartButton.style.display = 'none';
                     
                     // Resume scanning
-                    html5QrcodeScanner.resume();
+                    if (html5QrCode) {
+                        if (isScanning) {
+                            // Already scanning
+                            return;
+                        }
+                        
+                        html5QrCode.resume();
+                        isScanning = true;
+                    } else {
+                        // Re-initialize if html5QrCode instance doesn't exist
+                        initializeScanner();
+                    }
                 });
             }
             
@@ -335,7 +425,7 @@
                         <div>
                             <span class="status ${dbStatusClass}">
                                 ${dbCheck.verified === true ? 'Verified Partner' : 
-                                  (dbCheck.is_malicious === true ? 'Security Risk' : 'Not Verified')}
+                                (dbCheck.is_malicious === true ? 'Security Risk' : 'Not Verified')}
                             </span>
                             <p class="details">${dbCheck.details || 'No details available'}</p>
                             <p class="source">Source: ${dbCheck.source || 'Database Check'}</p>
@@ -344,7 +434,7 @@
                         <div style="margin-top: 12px;">
                             <span class="status ${webStatusClass}">
                                 ${webCheck.safe === true ? 'No Issues Found' : 
-                                  (webCheck.safe === false ? 'Reported Issues' : 'Use Caution')}
+                                (webCheck.safe === false ? 'Reported Issues' : 'Use Caution')}
                             </span>
                             <p class="details">${webCheck.details || 'No details available'}</p>
                             <p class="source">Source: ${webCheck.source || 'Web Search Analysis'}</p>
@@ -415,7 +505,7 @@
                 }
             }
             
-            // Helper functions
+            // Helper functions (keep existing implementation)
             window.openUrl = function(url) {
                 const formattedUrl = url.startsWith('http') ? url : 'https://' + url;
                 window.open(formattedUrl, '_blank');
