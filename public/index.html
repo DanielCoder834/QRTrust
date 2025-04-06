@@ -180,17 +180,9 @@
             }
         }
 
-        // Helper function to detect iOS devices
-        function isIOS() {
-            return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-        }
-
         docReady(function() {
             const resultContainer = document.getElementById('qr-reader-results');
             const qrReaderElement = document.getElementById('qr-reader');
-            let lastResult, countResults = 0;
-            
-            // Get the restart scanner button
             const restartButton = document.getElementById('restart-scanner');
             
             // Create a variable to hold our Html5Qrcode instance
@@ -204,25 +196,45 @@
                 if (isScanning) {
                     // Pause scanning
                     isScanning = false;
-                    html5QrCode.pause();
                     
-                    // Reset last result to allow rescanning later if needed
-                    lastResult = null;
+                    // Only pause the scanning, not the video
+                    // This keeps the camera running but stops processing frames
+                    html5QrCode.pause(false);
                     
                     // Process the scanned URL
                     processScannedUrl(decodedText);
                 }
             }
             
-            // Error callback for QR scanning
+            // Error callback for QR scanning - filter unnecessary logs
             function onScanError(errorMessage) {
-                // We can ignore errors as they happen frequently during normal scanning
-                console.debug("QR scan error: ", errorMessage);
+                // Only log serious errors, not routine scanning errors
+                if (!errorMessage.includes("No barcode or QR code detected") && 
+                    !errorMessage.includes("No MultiFormat Readers were able to detect the code")) {
+                    console.error("QR Scanner Error:", errorMessage);
+                }
+            }
+            
+            // Stop scanning and release camera resources
+            function stopScanner() {
+                if (html5QrCode && (html5QrCode.getState() !== Html5QrcodeScannerState.NOT_STARTED)) {
+                    html5QrCode.stop().then(() => {
+                        console.log("Scanner stopped, camera released");
+                        isScanning = false;
+                    }).catch(err => {
+                        console.error("Error stopping scanner:", err);
+                    });
+                }
             }
             
             // Initialize the scanner with the appropriate camera
             async function initializeScanner() {
                 try {
+                    // First, clean up if there's an existing scanner
+                    if (html5QrCode) {
+                        await stopScanner();
+                    }
+                    
                     // Clean up existing QR reader element content
                     qrReaderElement.innerHTML = '';
                     
@@ -230,64 +242,125 @@
                     const scanRegion = document.createElement('div');
                     scanRegion.style.position = 'relative';
                     scanRegion.style.width = '100%';
-                    scanRegion.style.height = '300px'; // Adjust height as needed
+                    scanRegion.style.height = '300px';
                     qrReaderElement.appendChild(scanRegion);
                     
-                    // Initialize QR code reader
-                    html5QrCode = new Html5Qrcode("qr-reader");
+                    // Create scanning indicator
+                    const scanningIndicator = document.createElement('div');
+                    scanningIndicator.style.position = 'absolute';
+                    scanningIndicator.style.bottom = '10px';
+                    scanningIndicator.style.left = '50%';
+                    scanningIndicator.style.transform = 'translateX(-50%)';
+                    scanningIndicator.style.background = 'rgba(0, 122, 255, 0.8)';
+                    scanningIndicator.style.color = 'white';
+                    scanningIndicator.style.padding = '4px 12px';
+                    scanningIndicator.style.borderRadius = '20px';
+                    scanningIndicator.style.fontSize = '12px';
+                    scanningIndicator.style.fontWeight = 'bold';
+                    scanningIndicator.textContent = 'Scanning...';
+                    qrReaderElement.appendChild(scanningIndicator);
                     
-                    // Get cameras
-                    const devices = await Html5Qrcode.getCameras();
-                    
-                    if (devices && devices.length) {
-                        let selectedDeviceId = devices[0].id;
-                        
-                        // On iOS, specifically look for a back camera
-                        if (isIOS()) {
-                            const backCamera = devices.find(device => 
-                                device.label.toLowerCase().includes('back'));
-                            
-                            if (backCamera) {
-                                selectedDeviceId = backCamera.id;
-                                console.log("Selected back camera:", backCamera.label);
-                            } else {
-                                console.log("Back camera not found, using default:", devices[0].label);
-                            }
+                    // Optimize configuration settings
+                    const config = {
+                        // Only look for QR codes to improve performance
+                        formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ],
+                        // Reduce FPS to 5 for better performance
+                        fps: 5,
+                        // Use adaptive QR box for better UX across different devices
+                        qrbox: { width: 250, height: 250 },
+                        // Match width/height of camera view
+                        aspectRatio: window.innerWidth > window.innerHeight ? 4/3 : 3/4,
+                        // Enable torch button for low-light conditions
+                        showTorchButtonIfSupported: true,
+                        // Use video constraints optimized for QR scanning
+                        videoConstraints: {
+                            // Prefer HD resolution for better scanning
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 },
+                            // Optimize for frame rate
+                            frameRate: { ideal: 15, max: 30 }
                         }
-                        
-                        // Configure camera settings
-                        const config = {
-                            fps: 10,
-                            qrbox: { width: 250, height: 250 },
-                            aspectRatio: 1.0,
-                            showTorchButtonIfSupported: true
-                        };
-                        
-                        // Start scanning
+                    };
+                    
+                    // Initialize QR code reader with minimized logging
+                    html5QrCode = new Html5Qrcode("qr-reader", { verbose: false });
+                    
+                    try {
+                        // First try environment facing mode (back camera)
                         await html5QrCode.start(
-                            selectedDeviceId, 
+                            { facingMode: "environment" }, 
                             config,
                             onScanSuccess,
                             onScanError
                         );
                         
                         isScanning = true;
-                        console.log("QR scanner started");
-                    } else {
-                        resultContainer.innerHTML = `
-                            <div class="result-item">
-                                <p style="color: var(--ios-red);">No camera devices found</p>
-                            </div>
-                        `;
-                        console.error("No camera devices found");
+                        console.log("QR scanner started with back camera (environment mode)");
+                    } catch (envError) {
+                        console.warn("Could not start environment camera:", envError);
+                        
+                        try {
+                            // Try exact environment as fallback
+                            await html5QrCode.start(
+                                { facingMode: { exact: "environment" } }, 
+                                config,
+                                onScanSuccess,
+                                onScanError
+                            );
+                            
+                            isScanning = true;
+                            console.log("QR scanner started with back camera (exact environment mode)");
+                        } catch (exactEnvError) {
+                            console.warn("Could not start exact environment camera:", exactEnvError);
+                            
+                            // Final fallback: try to enumerate cameras
+                            const devices = await Html5Qrcode.getCameras();
+                            
+                            if (devices && devices.length) {
+                                // Default to the last camera (often the back camera on mobile)
+                                let selectedDeviceId = devices[devices.length - 1].id;
+                                
+                                // Try to find back camera by common name patterns
+                                const backCamera = devices.find(device => 
+                                    device.label.toLowerCase().includes('back') || 
+                                    device.label.toLowerCase().includes('rear') ||
+                                    device.label.toLowerCase().includes('environment'));
+                                
+                                if (backCamera) {
+                                    selectedDeviceId = backCamera.id;
+                                    console.log("Selected back camera by name:", backCamera.label);
+                                } else {
+                                    console.log("No back camera found in:", devices.map(d => d.label));
+                                }
+                                
+                                await html5QrCode.start(
+                                    selectedDeviceId, 
+                                    config,
+                                    onScanSuccess,
+                                    onScanError
+                                );
+                                
+                                isScanning = true;
+                                console.log("QR scanner started with selected camera id");
+                            } else {
+                                throw new Error("No camera devices found");
+                            }
+                        }
                     }
+                    
+                    // Add window event listeners for cleanup
+                    window.addEventListener('beforeunload', stopScanner);
+                    
                 } catch (err) {
                     resultContainer.innerHTML = `
                         <div class="result-item">
-                            <p style="color: var(--ios-red);">Error initializing camera: ${err.message}</p>
+                            <p style="color: var(--ios-red);">Camera error: ${err.message}</p>
+                            <div class="action-buttons">
+                                <button class="btn btn-primary" onclick="location.reload()">Try Again</button>
+                            </div>
                         </div>
                     `;
-                    console.error("Error initializing scanner:", err);
+                    console.error("Fatal camera initialization error:", err);
                 }
             }
             
@@ -305,13 +378,18 @@
                     
                     // Resume scanning
                     if (html5QrCode) {
-                        if (isScanning) {
-                            // Already scanning
-                            return;
-                        }
+                        const scannerState = html5QrCode.getState();
                         
-                        html5QrCode.resume();
-                        isScanning = true;
+                        if (scannerState === Html5QrcodeScannerState.PAUSED) {
+                            html5QrCode.resume();
+                            isScanning = true;
+                        } else if (scannerState === Html5QrcodeScannerState.NOT_STARTED) {
+                            // Re-initialize if needed
+                            initializeScanner();
+                        } else {
+                            // Already scanning, do nothing
+                            console.log("Scanner already active");
+                        }
                     } else {
                         // Re-initialize if html5QrCode instance doesn't exist
                         initializeScanner();
@@ -319,7 +397,7 @@
                 });
             }
             
-            // Process the scanned URL
+            // Process the scanned URL - unchanged
             function processScannedUrl(url) {
                 console.log("Scanned URL:", url);
                 
@@ -332,10 +410,9 @@
                 `;
                 
                 // Use fallback if API fails or for testing
-                const useFallback = false;  // Set to true to use fallback instead of API
+                const useFallback = false;
                 
                 if (useFallback) {
-                    // Use local fallback for testing
                     setTimeout(() => {
                         const results = checkUrlSecurity(url);
                         showResults(url, results);
@@ -359,7 +436,6 @@
                 })
                 .then(results => {
                     console.log("API response:", results);
-                    // Show results from the API check
                     showResults(url, results);
                 })
                 .catch(error => {
@@ -367,16 +443,12 @@
                     
                     // Use fallback when API fails
                     const fallbackResults = checkUrlSecurity(url);
-                    
-                    // Log the fallback for debugging
                     console.log("Using fallback results:", fallbackResults);
-                    
-                    // Show fallback results
                     showResults(url, fallbackResults);
                 });
             }
             
-            // Show security check results
+            // Show security check results - unchanged
             function showResults(url, results) {
                 console.log("API Response:", results);
                 
@@ -455,7 +527,7 @@
                 }
             }
             
-            // Check URL security through the backend API (fallback)
+            // Check URL security through the backend API (fallback) - unchanged
             function checkUrlSecurity(url) {
                 console.warn("Using fallback URL security check - API call failed");
                 
