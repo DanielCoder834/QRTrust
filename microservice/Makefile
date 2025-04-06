@@ -1,0 +1,2 @@
+createdb: 
+	createdb qrtrust
