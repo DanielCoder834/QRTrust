@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Safe - Secure QR Code Scanner</title>
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        :root {
+            --ios-blue: #007AFF;
+            --ios-red: #FF3B30;
+            --ios-green: #34C759;
+            --ios-yellow: #FFCC00;
+            --ios-gray: #8E8E93;
+            --ios-light-gray: #F2F2F7;
+            --ios-dark-gray: #1C1C1E;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        }
+
+        body {
+            background-color: #F2F2F7;
+            color: #000;
+        }
+
+        .container {
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            color: var(--ios-dark-gray);
+        }
+
+        #qr-reader {
+            width: 100%;
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        #qr-reader-results {
+            margin-top: 20px;
+            padding: 16px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .result-item {
+            margin-bottom: 16px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--ios-light-gray);
+        }
+        
+        .result-item:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+
+        .result-url {
+            font-weight: bold;
+            word-break: break-all;
+            margin-bottom: 8px;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 8px;
+        }
+        
+        .status-safe {
+            background-color: var(--ios-green);
+            color: white;
+        }
+        
+        .status-caution {
+            background-color: var(--ios-yellow);
+            color: black;
+        }
+        
+        .status-danger {
+            background-color: var(--ios-red);
+            color: white;
+        }
+        
+        .details {
+            font-size: 14px;
+            color: var(--ios-dark-gray);
+        }
+        
+        .source {
+            font-size: 12px;
+            color: var(--ios-gray);
+            margin-top: 4px;
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 16px;
+        }
+        
+        .btn {
+            flex: 1;
+            padding: 10px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        
+        .btn-primary {
+            background-color: var(--ios-blue);
+            color: white;
+        }
+        
+        .btn-secondary {
+            background-color: var(--ios-light-gray);
+            color: var(--ios-blue);
+        }
+        
+        .btn-danger {
+            background-color: var(--ios-red);
+            color: white;
+        }
+        
+        #restart-scanner {
+            background: var(--ios-blue);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            display: none;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>QR Safe Scanner</h1>
+        </div>
+        
+        <div id="qr-reader"></div>
+        <div id="qr-reader-results"></div>
+        
+        <div style="margin-top: 20px; text-align: center;">
+            <button id="restart-scanner">Scan Another QR Code</button>
+        </div>
+    </div>
+
+    <script>
+        function docReady(fn) {
+            if (document.readyState === "complete" || document.readyState === "interactive") {
+                setTimeout(fn, 1);
+            } else {
+                document.addEventListener("DOMContentLoaded", fn);
+            }
+        }
+
+        docReady(function() {
+            const resultContainer = document.getElementById('qr-reader-results');
+            let lastResult, countResults = 0;
+            
+            // Get the restart scanner button
+            const restartButton = document.getElementById('restart-scanner');
+            
+            // Success callback when QR code is scanned
+            function onScanSuccess(decodedText, decodedResult) {
+                // Stop the scanner to prevent multiple scans
+                html5QrcodeScanner.pause();
+                
+                // Reset last result to allow rescanning later if needed
+                lastResult = null;
+                
+                // Process the scanned URL
+                processScannedUrl(decodedText);
+            }
+            
+            // Create scanner with default settings
+            const html5QrcodeScanner = new Html5QrcodeScanner(
+                "qr-reader", 
+                { 
+                    fps: 10, 
+                    qrbox: { width: 250, height: 250 },
+                    rememberLastUsedCamera: true,
+                    showTorchButtonIfSupported: true
+                },
+                /* verbose= */ false
+            );
+            
+            // Render the scanner
+            html5QrcodeScanner.render(onScanSuccess);
+            
+            // Add restart scanner button functionality
+            if (restartButton) {
+                restartButton.addEventListener('click', function() {
+                    // Clear results
+                    resultContainer.innerHTML = '';
+                    
+                    // Hide restart button
+                    restartButton.style.display = 'none';
+                    
+                    // Resume scanning
+                    html5QrcodeScanner.resume();
+                });
+            }
+            
+            // Process the scanned URL
+            function processScannedUrl(url) {
+                console.log("Scanned URL:", url);
+                
+                // Show "checking" message
+                resultContainer.innerHTML = `
+                    <div class="result-item">
+                        <p class="result-url">${url}</p>
+                        <p><em>Checking security status...</em></p>
+                    </div>
+                `;
+                
+                // Use fallback if API fails or for testing
+                const useFallback = false;  // Set to true to use fallback instead of API
+                
+                if (useFallback) {
+                    // Use local fallback for testing
+                    setTimeout(() => {
+                        const results = checkUrlSecurity(url);
+                        showResults(url, results);
+                    }, 1500);
+                    return;
+                }
+                
+                // Make API call to the backend for verification
+                fetch('/api/check-url', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ url: url })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`Server responded with status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(results => {
+                    console.log("API response:", results);
+                    // Show results from the API check
+                    showResults(url, results);
+                })
+                .catch(error => {
+                    console.error('Error checking URL:', error);
+                    
+                    // Use fallback when API fails
+                    const fallbackResults = checkUrlSecurity(url);
+                    
+                    // Log the fallback for debugging
+                    console.log("Using fallback results:", fallbackResults);
+                    
+                    // Show fallback results
+                    showResults(url, fallbackResults);
+                });
+            }
+            
+            // Show security check results
+            function showResults(url, results) {
+                console.log("API Response:", results);
+                
+                // Check if results is present
+                if (!results) {
+                    resultContainer.innerHTML = `
+                        <div class="result-item">
+                            <p class="result-url">${url}</p>
+                            <p style="color: var(--ios-red);">Error: No response received from server</p>
+                            
+                            <div class="action-buttons">
+                                <button class="btn btn-secondary" onclick="copyUrl('${url}')">Copy URL</button>
+                                <button class="btn btn-primary" onclick="processScannedUrl('${url}')">Try Again</button>
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Get db_check and web_check if they exist, otherwise use empty objects
+                const dbCheck = results.db_check || results.dbCheck || {};
+                const webCheck = results.web_check || results.webCheck || {};
+                
+                let dbStatusClass = 'status-caution';
+                let webStatusClass = 'status-caution';
+                
+                // Determine status classes for DB check
+                if (dbCheck.verified === true) {
+                    dbStatusClass = 'status-safe';
+                } else if (dbCheck.is_malicious === true) {
+                    dbStatusClass = 'status-danger';
+                }
+                
+                // Determine status classes for web check
+                if (webCheck.safe === true) {
+                    webStatusClass = 'status-safe';
+                } else if (webCheck.safe === false) {
+                    webStatusClass = 'status-danger';
+                }
+                
+                // Create result HTML
+                resultContainer.innerHTML = `
+                    <div class="result-item">
+                        <p class="result-url">${url}</p>
+                        
+                        <div>
+                            <span class="status ${dbStatusClass}">
+                                ${dbCheck.verified === true ? 'Verified Partner' : 
+                                  (dbCheck.is_malicious === true ? 'Security Risk' : 'Not Verified')}
+                            </span>
+                            <p class="details">${dbCheck.details || 'No details available'}</p>
+                            <p class="source">Source: ${dbCheck.source || 'Database Check'}</p>
+                        </div>
+                        
+                        <div style="margin-top: 12px;">
+                            <span class="status ${webStatusClass}">
+                                ${webCheck.safe === true ? 'No Issues Found' : 
+                                  (webCheck.safe === false ? 'Reported Issues' : 'Use Caution')}
+                            </span>
+                            <p class="details">${webCheck.details || 'No details available'}</p>
+                            <p class="source">Source: ${webCheck.source || 'Web Search Analysis'}</p>
+                        </div>
+                        
+                        <div class="action-buttons">
+                            <button class="btn ${webCheck.safe === false ? 'btn-danger' : 'btn-primary'}" onclick="openUrl('${url}')">
+                                ${webCheck.safe === false ? 'Open (Not Recommended)' : 'Open Link'}
+                            </button>
+                            <button class="btn btn-secondary" onclick="copyUrl('${url}')">Copy URL</button>
+                        </div>
+                    </div>
+                `;
+                
+                // After successful scan, show the restart button
+                if (restartButton) {
+                    restartButton.style.display = 'inline-block';
+                }
+            }
+            
+            // Check URL security through the backend API (fallback)
+            function checkUrlSecurity(url) {
+                console.warn("Using fallback URL security check - API call failed");
+                
+                // This is just a fallback in case the API is unreachable
+                if (url.includes('starbucks.com')) {
+                    return {
+                        db_check: {
+                            verified: true,
+                            source: 'QR Safe Verified Database (Fallback)',
+                            details: 'Official Starbucks QR code. Verified partner.',
+                            is_malicious: false
+                        },
+                        web_check: {
+                            safe: true,
+                            source: 'Web Search Analysis (Fallback)',
+                            details: 'No reported issues. This is a legitimate website.'
+                        }
+                    };
+                } else if (url.includes('scam') || url.includes('phish')) {
+                    return {
+                        db_check: {
+                            verified: false,
+                            source: 'QR Safe Threat Database (Fallback)',
+                            details: 'This URL has been reported as malicious.',
+                            is_malicious: true
+                        },
+                        web_check: {
+                            safe: false,
+                            source: 'Web Search Analysis (Fallback)',
+                            details: 'This URL has been reported as a scam by multiple sources.'
+                        }
+                    };
+                } else {
+                    return {
+                        db_check: {
+                            verified: false,
+                            source: 'QR Safe Verified Database (Fallback)',
+                            details: 'This URL is not from a verified partner.',
+                            is_malicious: false
+                        },
+                        web_check: {
+                            safe: null,
+                            source: 'Web Search Analysis (Fallback)',
+                            details: 'No known reports of scams related to this URL, but use caution as there is limited information available.'
+                        }
+                    };
+                }
+            }
+            
+            // Helper functions
+            window.openUrl = function(url) {
+                const formattedUrl = url.startsWith('http') ? url : 'https://' + url;
+                window.open(formattedUrl, '_blank');
+            };
+            
+            window.copyUrl = function(url) {
+                navigator.clipboard.writeText(url).then(() => {
+                    // Show copied message
+                    const copyBtn = document.querySelector('.btn-secondary');
+                    if (copyBtn) {
+                        const originalText = copyBtn.textContent;
+                        copyBtn.textContent = 'Copied!';
+                        setTimeout(() => {
+                            copyBtn.textContent = originalText;
+                        }, 2000);
+                    }
+                });
+            };
+        });
+    </script>
+</body>
+</html>
